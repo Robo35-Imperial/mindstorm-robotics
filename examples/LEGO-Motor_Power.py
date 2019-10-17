@@ -31,6 +31,7 @@ try:
         # The following BP.get_motor_encoder function returns the encoder value (what we want to use to control motor C's power).
         try:
             power = BP.get_motor_encoder(BP.PORT_B) / 10
+            print("Motor C Status: ", BP.get_motor_status(BP.PORT_C))
             if power > 100:
                 power = 100
             elif power < -100:

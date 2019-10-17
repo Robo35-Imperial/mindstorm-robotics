@@ -38,6 +38,7 @@ try:
             print(error)
         
         BP.set_motor_position(BP.PORT_A, target)    # set motor A's target position to the current position of motor D
+        print(("Motor A Target Degrees Per Second: %d" % target), "  Motor A Status: ", BP.get_motor_status(BP.PORT_A))
         
         try:
             print("Motor A target: %6d  Motor A position: %6d" % (target, BP.get_motor_encoder(BP.PORT_A)))
