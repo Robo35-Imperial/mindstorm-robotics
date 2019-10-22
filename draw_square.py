@@ -26,23 +26,23 @@ POSITION = 2
 VELOCITY = 3
 
 def move(cms):
-    pos_per_cm = 654 / 40
+    pos_per_cm = 664 / 40
     start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
 
     while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_cm * cms:
         print(BP.get_motor_status(BP.PORT_A)[POSITION])
-        BP.set_motor_dps(BP.PORT_A, 50)
-        BP.set_motor_dps(BP.PORT_D, 50)
+        BP.set_motor_dps(BP.PORT_A, 150)
+        BP.set_motor_dps(BP.PORT_D, 150)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
 def turn(degrees):
-    pos_per_degrees = 170 / 90
+    pos_per_degrees = 256 / 90
     start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
 
     while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_degrees * degrees:
         print(BP.get_motor_status(BP.PORT_A))
-        BP.set_motor_dps(BP.PORT_A, 50)
-        BP.set_motor_dps(BP.PORT_D, -50)
+        BP.set_motor_dps(BP.PORT_A, 25)
+        BP.set_motor_dps(BP.PORT_D, -25)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
 try:
