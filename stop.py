@@ -46,15 +46,6 @@ def turn(degrees):
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
 try:
-    try:
-        BP.offset_motor_encoder(BP.PORT_A, BP.get_motor_encoder(BP.PORT_A)) # reset encoder A
-        BP.offset_motor_encoder(BP.PORT_D, BP.get_motor_encoder(BP.PORT_D)) # reset encoder D
-    except IOError as error:
-        print(error)
-
-    for i in range(4):
-        move(40)
-        turn(90)
 
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 

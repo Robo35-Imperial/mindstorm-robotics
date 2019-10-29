@@ -19,18 +19,29 @@ from __future__ import division       #                           ''
 import time     # import the time library for the sleep function
 import brickpi3 # import the BrickPi3 drivers
 
+import random
+import numpy as np
+import math
+
 BP = brickpi3.BrickPi3() # Create an instance of the BrickPi3 class. BP will be the BrickPi3 object.
 STATUS = 0
 POWER = 1
 POSITION = 2
 VELOCITY = 3
 
+NUM_PARTICLES = 100
+E = (0, 0.1)
+F = (0, 1.6)
+G = (0, 3)
+
+PARTICLE_HISTORY = []
+
 def move(cms):
     pos_per_cm = 664 / 40
     start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
 
     while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_cm * cms:
-        print(BP.get_motor_status(BP.PORT_A)[POSITION])
+    #    print(BP.get_motor_status(BP.PORT_A)[POSITION])
         BP.set_motor_dps(BP.PORT_A, 150)
         BP.set_motor_dps(BP.PORT_D, 150)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
@@ -40,42 +51,74 @@ def turn(degrees):
     start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
 
     while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_degrees * degrees:
-        print(BP.get_motor_status(BP.PORT_A))
-        BP.set_motor_dps(BP.PORT_A, 25)
-        BP.set_motor_dps(BP.PORT_D, -25)
+    #    print(BP.get_motor_status(BP.PORT_A))
+        BP.set_motor_dps(BP.PORT_A, 50)
+        BP.set_motor_dps(BP.PORT_D, -50)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
+def updateParticlesStraightLine(d, particles):
+    new_particles = []
+    for p in particles:
+        e = random.gauss(*E)
+        f = random.gauss(*F)
+        new_particles.append((
+            p[0] + (d + e) * math.cos(math.radians(p[2])),
+            p[1] + (d + e) * math.sin(math.radians(p[2])),
+            p[2] + f
+        ))
+        
+    print("Standard Dev at {}: {}".format(d, np.std(np.array(new_particles)[:,1])))
+    PARTICLE_HISTORY.extend(new_particles)
+    return new_particles
+
+def updateParticlesTurn(a, particles):
+    new_particles = []
+    for p in particles:
+        g = random.gauss(*G)
+        new_particles.append((
+            p[0],
+            p[1],
+            p[2] + a + g
+        ))
+        
+    print("Standard Dev at {}: {}".format(a, np.std(np.array(new_particles)[:,1])))
+    PARTICLE_HISTORY.extend(new_particles)
+    return new_particles
+            
+def draw(particles):
+    xMul = 11
+    yMul = 11
+    draw_p = [(y*yMul + 200, x*xMul + 200, a) for x, y, a in particles]
+    print("drawParticles:" + str(draw_p))
+    
 try:
     try:
         BP.offset_motor_encoder(BP.PORT_A, BP.get_motor_encoder(BP.PORT_A)) # reset encoder A
         BP.offset_motor_encoder(BP.PORT_D, BP.get_motor_encoder(BP.PORT_D)) # reset encoder D
     except IOError as error:
         print(error)
-
-    for i in range(4):
-        move(40)
+    
+    start = (0, 0, 0)
+    
+    particles = [start] * NUM_PARTICLES
+    PARTICLE_HISTORY.extend(particles)
+    draw(particles)
+    
+    
+    for _ in range(4):
+        for _ in range(4):
+            print(BP.get_motor_status(BP.PORT_A)[POSITION])
+            move(10)
+            particles = updateParticlesStraightLine(10, particles)
+            draw(particles)
         turn(90)
+        particles = updateParticlesTurn(90, particles)
+        draw(particles)
+    
 
+    draw(PARTICLE_HISTORY)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
-    """
-    while True:
-        # Each of the following BP.get_motor_encoder functions returns the encoder value.
-        try:
-            target = BP.get_motor_encoder(BP.PORT_D) # read motor D's position
-        except IOError as error:
-            print(error)
-        
-        BP.set_motor_position(BP.PORT_A, target)    # set motor A's target position to the current position of motor D
-        print(("Motor A Target Degrees Per Second: %d" % target), "  Motor A Status: ", BP.get_motor_status(BP.PORT_A))
-        
-        try:
-            print("Motor A target: %6d  Motor A position: %6d" % (target, BP.get_motor_encoder(BP.PORT_A)))
-        except IOError as error:
-            print(error)
-        
-        time.sleep(0.02)  # delay for 0.02 seconds (20ms) to reduce the Raspberry Pi CPU load.
-    """
 
 except KeyboardInterrupt: # except the program gets interrupted by Ctrl+C on the keyboard.
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
