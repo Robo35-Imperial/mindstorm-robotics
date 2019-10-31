@@ -34,29 +34,38 @@ E = (0, 0.1)
 F = (0, 1)
 G = (0, 1)
 
-PARTICLE_HISTORY = []
+start = (0, 0, 0, 1 / NUM_PARTICLES)
+particles = [start] * NUM_PARTICLES
 
 def move(cms):
+    print("Distance:", cms)
     pos_per_cm = 664 / 40
     start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
 
     while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_cm * cms:
     #    print(BP.get_motor_status(BP.PORT_A)[POSITION])
-        BP.set_motor_dps(BP.PORT_A, 150)
-        BP.set_motor_dps(BP.PORT_D, 150)
+        BP.set_motor_dps(BP.PORT_A, 250)
+        BP.set_motor_dps(BP.PORT_D, 250)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
 def turn(degrees):
+    print("Turning:", degrees)
     pos_per_degrees = 254 / 90
-    start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
 
-    while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_degrees * degrees:
-    #    print(BP.get_motor_status(BP.PORT_A))
-        BP.set_motor_dps(BP.PORT_A, 50)
-        BP.set_motor_dps(BP.PORT_D, -50)
+    if degrees >= 0:
+        start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
+        while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos < pos_per_degrees * degrees:
+            BP.set_motor_dps(BP.PORT_A, 150)
+            BP.set_motor_dps(BP.PORT_D, -150)
+    else:
+        start_pos = BP.get_motor_status(BP.PORT_D)[POSITION]
+        while BP.get_motor_status(BP.PORT_D)[POSITION] - start_pos < - pos_per_degrees * degrees:
+            BP.set_motor_dps(BP.PORT_A, -150)
+            BP.set_motor_dps(BP.PORT_D, 150)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
-def updateParticlesStraightLine(d, particles):
+def updateParticlesStraightLine(d):
+    global particles
     new_particles = []
     for p in particles:
         e = random.gauss(*E)
@@ -64,33 +73,56 @@ def updateParticlesStraightLine(d, particles):
         new_particles.append((
             p[0] + (d + e) * math.cos(math.radians(p[2])),
             p[1] + (d + e) * math.sin(math.radians(p[2])),
-            p[2] + f
+            p[2] + f,
+            p[3]
         ))
         
-    print("Standard Dev at {}: {}".format(d, np.std(np.array(new_particles)[:,1])))
-    PARTICLE_HISTORY.extend(new_particles)
-    return new_particles
+    particles = new_particles
 
-def updateParticlesTurn(a, particles):
+def updateParticlesTurn(a):
+    global particles
     new_particles = []
     for p in particles:
         g = random.gauss(*G)
         new_particles.append((
             p[0],
             p[1],
-            p[2] + a + g
+            p[2] + a + g,
+            p[3]
         ))
         
-    print("Standard Dev at {}: {}".format(a, np.std(np.array(new_particles)[:,1])))
-    PARTICLE_HISTORY.extend(new_particles)
-    return new_particles
-            
-def draw(particles):
-    xMul = 11
-    yMul = 11
-    draw_p = [(y*yMul + 200, x*xMul + 200, a) for x, y, a in particles]
-    print("drawParticles:" + str(draw_p))
-    
+    particles = new_particles
+
+def estimatePosition():
+    np_particles = np.array(particles)
+    mean_x = np.dot(np_particles[:,0], np_particles[:,3])
+    mean_y = np.dot(np_particles[:,1], np_particles[:,3])
+    mean_theta = np.dot(np_particles[:,2], np_particles[:,3])
+
+    return (mean_x, mean_y, mean_theta)
+
+def navigateToWaypoint(x, y):
+    (mean_x, mean_y, mean_theta) = estimatePosition()
+
+    print((mean_x, mean_y, mean_theta))
+
+    dx, dy = x * 100 - mean_x, y * 100 - mean_y
+
+    alpha = math.degrees(math.atan2(dy, dx))
+    beta = alpha - mean_theta
+
+    if (beta > 180):
+        beta -= 360
+    elif (beta <= -180):
+        beta += 360
+
+    turn(beta)
+    updateParticlesTurn(beta)
+
+    d = math.sqrt(dx ** 2 + dy ** 2)
+    move(d)
+    updateParticlesStraightLine(d)
+
 try:
     try:
         BP.offset_motor_encoder(BP.PORT_A, BP.get_motor_encoder(BP.PORT_A)) # reset encoder A
@@ -98,25 +130,12 @@ try:
     except IOError as error:
         print(error)
     
-    start = (0, 0, 0)
-    
-    particles = [start] * NUM_PARTICLES
-    PARTICLE_HISTORY.extend(particles)
-    draw(particles)
-    
-    
-    for _ in range(4):
-        for _ in range(4):
-            print(BP.get_motor_status(BP.PORT_A)[POSITION])
-            move(10)
-            particles = updateParticlesStraightLine(10, particles)
-            draw(particles)
-        turn(90)
-        particles = updateParticlesTurn(90, particles)
-        draw(particles)
-    
+   
+    navigateToWaypoint(0.4, 0)
+    navigateToWaypoint(0.4, 0.4)
+    navigateToWaypoint(0, 0.4)
+    navigateToWaypoint(0, 0)
 
-    draw(PARTICLE_HISTORY)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
 
