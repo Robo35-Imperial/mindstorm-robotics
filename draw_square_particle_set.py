@@ -43,17 +43,17 @@ def move(cms):
     while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_cm * cms:
     #    print(BP.get_motor_status(BP.PORT_A)[POSITION])
         BP.set_motor_dps(BP.PORT_A, 150)
-        BP.set_motor_dps(BP.PORT_D, 150)
+        BP.set_motor_dps(BP.PORT_C, 150)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
 def turn(degrees):
     pos_per_degrees = 254 / 90
-    start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
+    start_pos = BP.get_motor_status(BP.PORT_C)[POSITION]
 
-    while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_degrees * degrees:
+    while BP.get_motor_status(BP.PORT_C)[POSITION] - start_pos< pos_per_degrees * degrees:
     #    print(BP.get_motor_status(BP.PORT_A))
-        BP.set_motor_dps(BP.PORT_A, 50)
-        BP.set_motor_dps(BP.PORT_D, -50)
+        BP.set_motor_dps(BP.PORT_A, -50)
+        BP.set_motor_dps(BP.PORT_C, 50)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
 def updateParticlesStraightLine(d, particles):
@@ -88,7 +88,7 @@ def updateParticlesTurn(a, particles):
 def draw(particles):
     xMul = 11
     yMul = 11
-    draw_p = [(y*yMul + 200, x*xMul + 200, a) for x, y, a in particles]
+    draw_p = [(x*xMul + 200, y*yMul + 200, a) for x, y, a in particles]
     print("drawParticles:" + str(draw_p))
     
 try:

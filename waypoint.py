@@ -45,7 +45,7 @@ def move(cms):
     while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_cm * cms:
     #    print(BP.get_motor_status(BP.PORT_A)[POSITION])
         BP.set_motor_dps(BP.PORT_A, 250)
-        BP.set_motor_dps(BP.PORT_D, 250)
+        BP.set_motor_dps(BP.PORT_C, 250)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
 def turn(degrees):
@@ -53,15 +53,15 @@ def turn(degrees):
     pos_per_degrees = 254 / 90
 
     if degrees >= 0:
+        start_pos = BP.get_motor_status(BP.PORT_C)[POSITION]
+        while BP.get_motor_status(BP.PORT_C)[POSITION] - start_pos < pos_per_degrees * degrees:
+            BP.set_motor_dps(BP.PORT_A, -150)
+            BP.set_motor_dps(BP.PORT_C, 150)
+    else:
         start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
         while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos < pos_per_degrees * degrees:
             BP.set_motor_dps(BP.PORT_A, 150)
-            BP.set_motor_dps(BP.PORT_D, -150)
-    else:
-        start_pos = BP.get_motor_status(BP.PORT_D)[POSITION]
-        while BP.get_motor_status(BP.PORT_D)[POSITION] - start_pos < - pos_per_degrees * degrees:
-            BP.set_motor_dps(BP.PORT_A, -150)
-            BP.set_motor_dps(BP.PORT_D, 150)
+            BP.set_motor_dps(BP.PORT_C, -150)
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
 def updateParticlesStraightLine(d):
@@ -130,11 +130,14 @@ try:
     except IOError as error:
         print(error)
     
-   
-    navigateToWaypoint(0.4, 0)
-    navigateToWaypoint(0.4, 0.4)
-    navigateToWaypoint(0, 0.4)
-    navigateToWaypoint(0, 0)
+    while True:
+        x = float(input("Please enter a value for x: "))
+        y = float(input("Please enter a value for y: "))
+        navigateToWaypoint(x, y)
+    #    navigateToWaypoint(0.4, 0)
+    #    navigateToWaypoint(0.4, 0.4)
+    #    navigateToWaypoint(0, 0.4)
+    #    navigateToWaypoint(0, 0)
 
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
