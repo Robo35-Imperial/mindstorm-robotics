@@ -31,10 +31,11 @@ POWER = 1
 POSITION = 2
 VELOCITY = 3
 
-NUM_PARTICLES = 100
-E = (0, 0.1)
-F = (0, 1)
+NUM_PARTICLES = 200
+E = (0, 0.7)
+F = (0, 0.01)
 G = (0, 1)
+STEP_SIZE = 10
 
 MAP_POINTS = (
     (0, 0), 
@@ -46,6 +47,18 @@ MAP_POINTS = (
     (168, 84),
     (210, 84),
     (210, 0)
+)
+
+WAYPOINTS = (
+    (84, 30),
+    (180, 30),
+    (180, 54),
+    (138, 54),
+    (138, 168),
+    (114, 168),
+    (114, 84),
+    (84, 84),
+    (84, 30)
 )
 
 MAP_WALLS = (
@@ -60,12 +73,17 @@ MAP_WALLS = (
     (MAP_POINTS[8], MAP_POINTS[0])
 )
 
+MAX_X = max([x for x,y in MAP_POINTS])
+LAST_CLOSEST_WALL = None
+SONAR_MOUNT_DIFFERENCE = 2
+
 LIKELIHOOD_SD = 2.5
-LIKELIHOOD_CONST = 0
+LIKELIHOOD_CONST = 0.001
 
 RESAMPLE_FREQ = 0.2
 
-start = (0, 0, 0, 1 / NUM_PARTICLES)
+# start = (0, 0, 0, 1 / NUM_PARTICLES)
+start = (84, 30, 0, 1 / NUM_PARTICLES)
 particles = [start] * NUM_PARTICLES
 
 def move(cms):
@@ -75,9 +93,11 @@ def move(cms):
 
     while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_cm * cms:
     #    print(BP.get_motor_status(BP.PORT_A)[POSITION])
-        BP.set_motor_dps(BP.PORT_A, 250)
-        BP.set_motor_dps(BP.PORT_D, 250)
-    BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
+        BP.set_motor_dps(BP.PORT_A, 150)
+        BP.set_motor_dps(BP.PORT_C, 150)
+    BP.set_motor_dps(BP.PORT_A, 0)
+    BP.set_motor_dps(BP.PORT_C, 0)
+    #BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
     
     updateParticlesStraightLine(cms)
 
@@ -94,14 +114,16 @@ def turn(degrees):
     if degrees >= 0:
         start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
         while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos < pos_per_degrees * degrees:
-            BP.set_motor_dps(BP.PORT_A, 150)
-            BP.set_motor_dps(BP.PORT_D, -150)
+            BP.set_motor_dps(BP.PORT_A, 100)
+            BP.set_motor_dps(BP.PORT_C, -100)
     else:
-        start_pos = BP.get_motor_status(BP.PORT_D)[POSITION]
-        while BP.get_motor_status(BP.PORT_D)[POSITION] - start_pos < - pos_per_degrees * degrees:
-            BP.set_motor_dps(BP.PORT_A, -150)
-            BP.set_motor_dps(BP.PORT_D, 150)
-    BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
+        start_pos = BP.get_motor_status(BP.PORT_C)[POSITION]
+        while BP.get_motor_status(BP.PORT_C)[POSITION] - start_pos < - pos_per_degrees * degrees:
+            BP.set_motor_dps(BP.PORT_A, -100)
+            BP.set_motor_dps(BP.PORT_C, 100)
+    BP.set_motor_dps(BP.PORT_A, 0)
+    BP.set_motor_dps(BP.PORT_C, 0)
+    #BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
     updateParticlesTurn(degrees)
 
@@ -136,34 +158,49 @@ def updateParticlesTurn(a):
     particles = new_particles
     mcl()
 
+def drawMap():
+    xMul = 3
+    yMul = 3
+    for (x1, y1), (x2, y2) in MAP_WALLS:
+        print("drawLine:" + str(((MAX_X - x1)*xMul + 100, y1*yMul + 100,(MAX_X - x2)*xMul + 100,y2*yMul + 100)))
+
+
+        
+    
+def draw(particles):
+    xMul = 3
+    yMul = 3
+    draw_p = [((MAX_X -x)*xMul + 100, y*yMul + 100, a, w) for x, y, a, w in particles]
+    draw_waypoints = [((MAX_X - x)*xMul + 100, y*yMul + 100, 0, 1) for x, y in WAYPOINTS]
+    print("drawParticles:" + str(draw_p + draw_waypoints))
+    
 def estimatePosition():
     np_particles = np.array(particles)
-    mean_x = np.dot(np_particles[:,0], np_particles[:,3])
-    mean_y = np.dot(np_particles[:,1], np_particles[:,3])
-    mean_theta = np.dot(np_particles[:,2], np_particles[:,3])
-
+    w_sum = np_particles[:,3].sum()
+    mean_x = np.dot(np_particles[:,0], np_particles[:,3]) / w_sum
+    mean_y = np.dot(np_particles[:,1], np_particles[:,3]) / w_sum
+    mean_theta = np.dot(np_particles[:,2], np_particles[:,3]) / w_sum
     return (mean_x, mean_y, mean_theta)
 
 def navigateToWaypoint(x, y):
     (mean_x, mean_y, mean_theta) = estimatePosition()
 
-    print((mean_x, mean_y, mean_theta))
-
-    dx, dy = x * 100 - mean_x, y * 100 - mean_y
+    dx, dy = x - mean_x, y - mean_y
     d = math.sqrt(dx ** 2 + dy ** 2)
-
-    while d > 0.2:
+    alpha = math.degrees(math.atan2(dy, dx))
+    while d > STEP_SIZE:
+        print("REPOINTING TO: ", (mean_x, mean_y, mean_theta), "| DISTANCE TO WAYPOINT:", d)
+        
         alpha = math.degrees(math.atan2(dy, dx))
         beta = alpha - mean_theta
-
         turn(beta)
-
-        move(20)
+        move(STEP_SIZE)
         
         (mean_x, mean_y, mean_theta) = estimatePosition()
 
-        dx, dy = x * 100 - mean_x, y * 100 - mean_y
+        dx, dy = x - mean_x, y - mean_y
         d = math.sqrt(dx ** 2 + dy ** 2)
+        draw(particles)
 
     alpha = math.degrees(math.atan2(dy, dx))
     beta = alpha - mean_theta
@@ -172,37 +209,56 @@ def navigateToWaypoint(x, y):
 
 
 def whichWall(x, y, theta):
-    closest_wall = None
+    closest_wall = LAST_CLOSEST_WALL
     closest_dist = float('Inf')
     
+    theta = math.radians(theta)
+    cosT = math.cos(theta)
+    sinT = math.sin(theta)
+    closest_wall_length = 0
     for wall in MAP_WALLS:
         ax = wall[0][0]
         ay = wall[0][1]
         bx = wall[1][0]
         by = wall[1][1]
 
-        m = ((by - ay) * (ax - x) - (bx - ax) * (ay - y)) 
-            / ((by - ay) * math.cos(theta) - (bx - ax) * math.sin(theta))
+        m = ((by - ay) * (ax - x) - (bx - ax) * (ay - y)) / ((by - ay) * cosT - (bx - ax) * sinT)
 
-        mx = x + m * math.cos(theta)
-        my = y + m * math.sin(theta)
+        mx = x + m * cosT
+        my = y + m * sinT
 
         wallLength = math.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
 
         maLength = math.sqrt((ax - mx) ** 2 + (ay - my) ** 2)
         mbLength = math.sqrt((bx - mx) ** 2 + (by - my) ** 2)
 
-        if (maLength <= wallLength && mbLength <= wallLength):
-            if (closest_dist < m):
+        if maLength <= wallLength and mbLength <= wallLength and m > 0:
+            if (m < closest_dist):
                 closest_wall = wall
                 closest_dist = m
+                closest_wall_length = wallLength
 
-    return closest_wall, m
+    ax = closest_wall[0][0]
+    ay = closest_wall[0][1]
+    bx = closest_wall[1][0]
+    by = closest_wall[1][1]
+    numerator = cosT*(ay - by) + sinT*(bx - ax)
+    beta = math.acos(numerator / closest_wall_length)
+    
+    return closest_wall, closest_dist, beta
 
 def calculateLikelihood(x, y, theta, z):
-    (wall, dist) = whichWall(x, y, theta)
-
-    sample = math.exp((z - dist) ** 2 / (2 * LIKELIHOOD_SD ** 2)) + LIKELIHOOD_CONST
+    wall, dist, beta = whichWall(x, y, theta)
+    LAST_CLOSEST_WALL = wall
+    if abs(beta) > 45:
+        return LIKELIHOOD_CONST
+    
+    # print(z - dist)
+    # print('num: {} {}'.format(- (z - dist) ** 2, (2 * LIKELIHOOD_SD ** 2)))
+    # print('z:', z)
+    
+    #print("zzzzzz", z, dist, wall)
+    sample = np.exp((-((z - dist) ** 2)) / (2 * (LIKELIHOOD_SD ** 2))) + LIKELIHOOD_CONST
 
     return sample
 
@@ -223,15 +279,17 @@ def normaliseWeights(z):
         ))
 
     particles = new_particles
+    
 
 def resampleWeights():
     global particles
 
     new_particles = []
-    for _ in range(len(particles)):
+    particles.sort(key = lambda x: x[3])
+    for _ in range(NUM_PARTICLES):
         rand = random.random()
         cumulative_weight = 0
-        curr_weight_index = 0
+        curr_weight_index = -1
         while cumulative_weight < rand:
             curr_weight_index += 1
             cumulative_weight += particles[curr_weight_index][3]
@@ -241,14 +299,23 @@ def resampleWeights():
     particles = new_particles
 
 def mcl():
-    try:
-        z = BP.get_sensor(BP.PORT_1)
-        print(z)
-    except brickpi3.SensorError as error:
-        print(error)
-    
+    z = None
+    while not z:
+        try:
+            z = BP.get_sensor(BP.PORT_1) + SONAR_MOUNT_DIFFERENCE
+            print(z)
+        except brickpi3.SensorError as error:
+            #print(error)
+            pass
+        except Exception as e:
+            print(e)
+
     normaliseWeights(z)
+    #print("\n WEIGHTS_SUM BEFORE ", particles)
     resampleWeights()
+    # print("\n WEIGHTS_SUM AFTER ", sum([p[3] for p in particles]))
+    #print("\n WEIGHTS_SUM AFTER ", particles)
+    
 
 """
 try:
@@ -271,13 +338,13 @@ except KeyboardInterrupt: # except the program gets interrupted by Ctrl+C on the
 """
 
 try:
-    while True:
-        x = float(input("X coord: "))
-        y = float(input("Y coord: "))
-
+    drawMap()
+    for x, y in WAYPOINTS[1:]:
+        # x = float(input("X coord: "))
+        # y = float(input("Y coord: "))
         navigateToWaypoint(x, y)
-
         time.sleep(0.02)  # delay for 0.02 seconds (20ms) to reduce the Raspberry Pi CPU load.
+        # break
 
 except KeyboardInterrupt: # except the program gets interrupted by Ctrl+C on the keyboard.
     BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
