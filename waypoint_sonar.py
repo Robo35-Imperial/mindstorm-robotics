@@ -25,6 +25,8 @@ import math
 
 BP = brickpi3.BrickPi3() # Create an instance of the BrickPi3 class. BP will be the BrickPi3 object.
 BP.set_sensor_type(BP.PORT_1, BP.SENSOR_TYPE.NXT_ULTRASONIC)
+BP.set_sensor_type(BP.PORT_2, BP.SENSOR_TYPE.TOUCH)
+BP.set_sensor_type(BP.PORT_3, BP.SENSOR_TYPE.TOUCH)
 
 STATUS = 0
 POWER = 1
@@ -87,19 +89,26 @@ start = (84, 30, 0, 1 / NUM_PARTICLES)
 particles = [start] * NUM_PARTICLES
 
 def move(cms):
-    print("Distance:", cms)
+    #print("Distance:", cms)
     pos_per_cm = 664 / 40
     start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
-
+    BP.set_motor_dps(BP.PORT_A, 150)
+    BP.set_motor_dps(BP.PORT_C, 150)
+   
     while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_cm * cms:
     #    print(BP.get_motor_status(BP.PORT_A)[POSITION])
-        BP.set_motor_dps(BP.PORT_A, 150)
-        BP.set_motor_dps(BP.PORT_C, 150)
+        if (BP.get_sensor(BP.PORT_2) or BP.get_sensor(BP.PORT_3)):
+            BP.set_motor_dps(BP.PORT_A, -150)
+            BP.set_motor_dps(BP.PORT_C, -150)
+            time.sleep(1)
+            break
+
     BP.set_motor_dps(BP.PORT_A, 0)
     BP.set_motor_dps(BP.PORT_C, 0)
     #BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
-    
-    updateParticlesStraightLine(cms)
+   
+    traveled = (BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos) / pos_per_cm
+    updateParticlesStraightLine(traveled)
 
 def turn(degrees):
     if (degrees > 180):
@@ -108,7 +117,7 @@ def turn(degrees):
         degrees += 360
     
 
-    print("Turning:", degrees)
+    #print("Turning:", degrees)
     pos_per_degrees = 254 / 90
 
     if degrees >= 0:
@@ -125,9 +134,42 @@ def turn(degrees):
     BP.set_motor_dps(BP.PORT_C, 0)
     #BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
 
-    print('TURN COMPLETE')
+    #print('TURN COMPLETE')
     
-    # updateParticlesTurn(degrees)
+    updateParticlesTurn(degrees)
+
+def turnSensor(degrees, speed=20):
+    degrees = -degrees
+    pos_per_degree = 365 / 360
+    start_pos = BP.get_motor_status(BP.PORT_D)[POSITION]
+
+    if degrees >= 0:
+        BP.set_motor_dps(BP.PORT_D, -speed)
+        #print(BP.get_motor_status(BP.PORT_D)[POSITION])
+        while BP.get_motor_status(BP.PORT_D)[POSITION] - start_pos > -pos_per_degree * degrees:
+            #print(BP.get_motor_status(BP.PORT_D)[POSITION])
+            pass
+            #print(BP.get_motor_status(BP.PORT_D))
+    else:
+        BP.set_motor_dps(BP.PORT_D, speed)
+        #print(BP.get_motor_status(BP.PORT_D)[2] - start_pos)
+        #print(-pos_per_degree * degrees)
+        while BP.get_motor_status(BP.PORT_D)[POSITION] - start_pos < -pos_per_degree * degrees:
+            #print(BP.get_motor_status(BP.PORT_D)[POSITION])
+            pass
+            #print(BP.get_motor_status(BP.PORT_D))
+
+    BP.set_motor_dps(BP.PORT_D, 0)
+    time.sleep(0.1)
+
+def getSonarMeasurement():
+    z = None
+    while not z:
+        try:
+            z = BP.get_sensor(BP.PORT_1) + SONAR_MOUNT_DIFFERENCE
+        except Exception as e:
+            pass
+    return z
 
 def updateParticlesStraightLine(d):
     global particles
@@ -166,9 +208,6 @@ def drawMap():
     for (x1, y1), (x2, y2) in MAP_WALLS:
         print("drawLine:" + str(((MAX_X - x1)*xMul + 100, y1*yMul + 100,(MAX_X - x2)*xMul + 100,y2*yMul + 100)))
 
-
-        
-    
 def draw(particles):
     xMul = 3
     yMul = 3
@@ -184,25 +223,25 @@ def estimatePosition():
     mean_theta = np.dot(np_particles[:,2], np_particles[:,3]) / w_sum
     return (mean_x, mean_y, mean_theta)
 
-def navigateToWaypoint(x, y):
+def navigateToWaypoint(x, y, step_size=STEP_SIZE):
     (mean_x, mean_y, mean_theta) = estimatePosition()
 
     dx, dy = x - mean_x, y - mean_y
     d = math.sqrt(dx ** 2 + dy ** 2)
     alpha = math.degrees(math.atan2(dy, dx))
-    while d > STEP_SIZE:
+    while d > step_size:
         print("REPOINTING TO: ", (mean_x, mean_y, mean_theta), "| DISTANCE TO WAYPOINT:", d)
         
         alpha = math.degrees(math.atan2(dy, dx))
         beta = alpha - mean_theta
         turn(beta)
-        move(STEP_SIZE)
+        move(step_size)
         
         (mean_x, mean_y, mean_theta) = estimatePosition()
 
         dx, dy = x - mean_x, y - mean_y
         d = math.sqrt(dx ** 2 + dy ** 2)
-        draw(particles)
+        #draw(particles)
 
     alpha = math.degrees(math.atan2(dy, dx))
     beta = alpha - mean_theta
@@ -295,9 +334,8 @@ def resampleWeights():
         while cumulative_weight < rand:
             curr_weight_index += 1
             cumulative_weight += particles[curr_weight_index][3]
-
-        new_particles.append(particles[curr_weight_index])
-
+        p = particles[curr_weight_index]
+        new_particles.append((p[0], p[1], p[2], 1/NUM_PARTICLES))
     particles = new_particles
 
 def mcl():
@@ -305,7 +343,6 @@ def mcl():
     while not z:
         try:
             z = BP.get_sensor(BP.PORT_1) + SONAR_MOUNT_DIFFERENCE
-            print(z)
         except brickpi3.SensorError as error:
             #print(error)
             pass
@@ -341,7 +378,7 @@ except KeyboardInterrupt: # except the program gets interrupted by Ctrl+C on the
 
 if __name__ == "__main__":
     try:
-        drawMap()
+        #drawMap()
         for x, y in WAYPOINTS[1:]:
             # x = float(input("X coord: "))
             # y = float(input("Y coord: "))
