@@ -16,7 +16,24 @@ from waypoint_sonar import move, turn, BP
 SONAR_MOUNT_DIFFERENCE = 2
 
 def turnSensor(degrees):
-    BP.set_motor_dps(BP.PORT_D)
+    pos_per_degree = 365 / 360
+    start_pos = BP.get_motor_status(BP.PORT_D)[2]
+    speed = 15
+
+    if degrees >= 0:
+        BP.set_motor_dps(BP.PORT_D, -speed)
+        while BP.get_motor_status(BP.PORT_D)[2] - start_pos > -pos_per_degree * degrees:
+            pass
+            #print(BP.get_motor_status(BP.PORT_D))
+    else:
+        BP.set_motor_dps(BP.PORT_D, speed)
+        #print(BP.get_motor_status(BP.PORT_D)[2] - start_pos)
+        #print(-pos_per_degree * degrees)
+        while BP.get_motor_status(BP.PORT_D)[2] - start_pos < -pos_per_degree * degrees:
+            pass
+            #print(BP.get_motor_status(BP.PORT_D))
+
+    BP.set_motor_dps(BP.PORT_A, 0)
 
 # Location signature class: stores a signature characterizing one location
 class LocationSignature:
@@ -97,8 +114,9 @@ def characterize_location(ls):
 
     for i in range(len(ls.sig)):
         # turn(1)
-        turn_senor(1)
-        time.sleep(0.1)  # delay for 0.02 seconds (20ms) to reduce the Raspberry Pi CPU load.
+        turnSensor(-20)
+        print(i, len(ls.sig))
+        #time.sleep(0.1)  # delay for 0.02 seconds (20ms) to reduce the Raspberry Pi CPU load.
         # time.sleep(0.002)  # delay for 0.02 seconds (20ms) to reduce the Raspberry Pi CPU load.
         z = None
         while not z:
@@ -124,7 +142,7 @@ def compare_signatures(ls1, ls2):
 # This function characterizes the current location, and stores the obtained 
 # signature into the next available file.
 def learn_location():
-    ls = LocationSignature()
+    ls = LocationSignature(18)
     characterize_location(ls)
     idx = signatures.get_free_index();
     if (idx == -1): # run out of signature files
@@ -162,10 +180,11 @@ def recognize_location():
 if __name__ == "__main__":
     try:
         # BP.reset_all()        
-        signatures = SignatureContainer(5);
-        signatures.delete_loc_files()
-        learn_location();
+        #signatures = SignatureContainer(5);
+        #signatures.delete_loc_files()
+        #learn_location();
         #recognize_location();
+        turnSensor(90)
     except KeyboardInterrupt: # except the program gets interrupted by Ctrl+C on the keyboard.
         BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
     finally:
