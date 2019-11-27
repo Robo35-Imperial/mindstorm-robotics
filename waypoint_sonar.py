@@ -101,7 +101,7 @@ def move(cms):
             BP.set_motor_dps(BP.PORT_A, -150)
             BP.set_motor_dps(BP.PORT_C, -150)
             time.sleep(1)
-            break
+            return True
 
     BP.set_motor_dps(BP.PORT_A, 0)
     BP.set_motor_dps(BP.PORT_C, 0)
@@ -109,6 +109,7 @@ def move(cms):
    
     traveled = (BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos) / pos_per_cm
     updateParticlesStraightLine(traveled)
+    return False
 
 def turn(degrees):
     if (degrees > 180):
@@ -235,7 +236,8 @@ def navigateToWaypoint(x, y, step_size=STEP_SIZE):
         alpha = math.degrees(math.atan2(dy, dx))
         beta = alpha - mean_theta
         turn(beta)
-        move(step_size)
+        hit = move(step_size)
+        if hit: return True
         
         (mean_x, mean_y, mean_theta) = estimatePosition()
 
@@ -246,7 +248,7 @@ def navigateToWaypoint(x, y, step_size=STEP_SIZE):
     alpha = math.degrees(math.atan2(dy, dx))
     beta = alpha - mean_theta
     turn(beta)
-    move(d)
+    return move(d)
 
 
 def whichWall(x, y, theta):
