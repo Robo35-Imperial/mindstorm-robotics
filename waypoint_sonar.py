@@ -37,6 +37,10 @@ NUM_PARTICLES = 200
 E = (0, 0.7)
 F = (0, 0.01)
 G = (0, 1)
+
+# E = (0, 0)
+# F = (0, 0)
+# G = (0, 0)
 STEP_SIZE = 10
 
 MAP_POINTS = (
@@ -88,20 +92,25 @@ RESAMPLE_FREQ = 0.2
 start = (84, 30, 0, 1 / NUM_PARTICLES)
 particles = [start] * NUM_PARTICLES
 
-def move(cms):
+def move(cms, speed=300):
     #print("Distance:", cms)
     pos_per_cm = 664 / 40
     start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
-    BP.set_motor_dps(BP.PORT_A, 150)
-    BP.set_motor_dps(BP.PORT_C, 150)
-   
+    BP.set_motor_dps(BP.PORT_A, speed)
+    BP.set_motor_dps(BP.PORT_C, speed)
+
     while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos< pos_per_cm * cms:
     #    print(BP.get_motor_status(BP.PORT_A)[POSITION])
         if (BP.get_sensor(BP.PORT_2) or BP.get_sensor(BP.PORT_3)):
-            BP.set_motor_dps(BP.PORT_A, -150)
-            BP.set_motor_dps(BP.PORT_C, -150)
+            start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
+            BP.set_motor_dps(BP.PORT_A, -speed)
+            BP.set_motor_dps(BP.PORT_C, -speed)
             time.sleep(1)
+            traveled = (BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos) / pos_per_cm
+            print(traveled)
+            updateParticlesStraightLine(traveled)
             return True
+    
 
     BP.set_motor_dps(BP.PORT_A, 0)
     BP.set_motor_dps(BP.PORT_C, 0)
@@ -119,18 +128,18 @@ def turn(degrees):
     
 
     #print("Turning:", degrees)
-    pos_per_degrees = 254 / 90
+    pos_per_degrees = 231 / 90
 
     if degrees >= 0:
         start_pos = BP.get_motor_status(BP.PORT_A)[POSITION]
         while BP.get_motor_status(BP.PORT_A)[POSITION] - start_pos < pos_per_degrees * degrees:
-            BP.set_motor_dps(BP.PORT_A, 100)
-            BP.set_motor_dps(BP.PORT_C, -100)
+            BP.set_motor_dps(BP.PORT_A, 200)
+            BP.set_motor_dps(BP.PORT_C, -200)
     else:
         start_pos = BP.get_motor_status(BP.PORT_C)[POSITION]
         while BP.get_motor_status(BP.PORT_C)[POSITION] - start_pos < - pos_per_degrees * degrees:
-            BP.set_motor_dps(BP.PORT_A, -100)
-            BP.set_motor_dps(BP.PORT_C, 100)
+            BP.set_motor_dps(BP.PORT_A, -200)
+            BP.set_motor_dps(BP.PORT_C, 200)
     BP.set_motor_dps(BP.PORT_A, 0)
     BP.set_motor_dps(BP.PORT_C, 0)
     #BP.reset_all()        # Unconfigure the sensors, disable the motors, and restore the LED to the control of the BrickPi3 firmware.
@@ -203,11 +212,12 @@ def updateParticlesTurn(a):
     particles = new_particles
     mcl()
 
-def drawMap():
+def drawMap(mapwalls=MAP_WALLS):
     xMul = 3
     yMul = 3
-    for (x1, y1), (x2, y2) in MAP_WALLS:
+    for (x1, y1), (x2, y2) in mapwalls:
         print("drawLine:" + str(((MAX_X - x1)*xMul + 100, y1*yMul + 100,(MAX_X - x2)*xMul + 100,y2*yMul + 100)))
+
 
 def draw(particles):
     xMul = 3
@@ -237,18 +247,21 @@ def navigateToWaypoint(x, y, step_size=STEP_SIZE):
         beta = alpha - mean_theta
         turn(beta)
         hit = move(step_size)
+        draw(particles)
         if hit: return True
         
         (mean_x, mean_y, mean_theta) = estimatePosition()
 
         dx, dy = x - mean_x, y - mean_y
         d = math.sqrt(dx ** 2 + dy ** 2)
-        #draw(particles)
 
     alpha = math.degrees(math.atan2(dy, dx))
     beta = alpha - mean_theta
     turn(beta)
-    return move(d)
+    hit = move(d)
+    draw(particles)
+    return hit
+    
 
 
 def whichWall(x, y, theta):
@@ -380,7 +393,7 @@ except KeyboardInterrupt: # except the program gets interrupted by Ctrl+C on the
 
 if __name__ == "__main__":
     try:
-        #drawMap()
+        drawMap()
         for x, y in WAYPOINTS[1:]:
             # x = float(input("X coord: "))
             # y = float(input("Y coord: "))

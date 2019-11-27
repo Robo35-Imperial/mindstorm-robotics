@@ -2,12 +2,14 @@ import numpy as np
 import math
 import sys
 from collections import namedtuple
-from waypoint_sonar import navigateToWaypoint, estimatePosition, turn, turnSensor, getSonarMeasurement, BP
+from waypoint_sonar import navigateToWaypoint, estimatePosition, turn, turnSensor, getSonarMeasurement, BP, draw, drawMap
 
 Pos = namedtuple('Pos', ['x', 'y', 'theta'])
 LEFT = 1
 RIGHT = 2
 BOTTOM = 3
+
+
 class OccupancyMap:
 
     def __init__(self, start, top_left, shape, orientation):
@@ -22,16 +24,16 @@ class OccupancyMap:
         processed_squares = set()
         for t in range(theta-15, theta+15, 1):
             for r in range(0, depth+1, 1):
-                if orientation == LEFT:
-                     localPos = Pos(x=abs(self.top_left.x - pos.x), y=abs(self.top_left.y - pos.y), theta=pos.theta)
+                if self.orientation == LEFT:
+                    localPos = Pos(x=abs(self.top_left.x - pos.x), y=abs(self.top_left.y - pos.y), theta=pos.theta)
                     x = math.floor(r * math.cos(math.radians(t)) + localPos.x)
                     y = math.floor(r * math.sin(math.radians(t)) + localPos.y)
-                if orientation == RIGHT:
-                     localPos = Pos(x=abs(self.top_left.x - pos.x), y=abs(self.top_left.y - pos.y), theta=180 - pos.theta)
+                if self.orientation == RIGHT:
+                    localPos = Pos(x=abs(self.top_left.x - pos.x), y=abs(self.top_left.y - pos.y), theta=180 - pos.theta)
                     x = math.floor(-r * math.cos(math.radians(t)) + localPos.x)
                     y = math.floor(r * math.sin(math.radians(t)) + localPos.y)
-                if orientation == BOTTOM:
-                     localPos = Pos(x=abs(self.top_left.x - pos.x), y=abs(self.top_left.y - pos.y), theta=90 - pos.theta)
+                if self.orientation == BOTTOM:
+                    localPos = Pos(x=abs(self.top_left.x - pos.x), y=abs(self.top_left.y - pos.y), theta=90 - pos.theta)
                     y = math.floor(-r * math.cos(math.radians(t)) + localPos.y)
                     x = math.floor(r * math.sin(math.radians(t)) + localPos.x)
 
@@ -55,6 +57,10 @@ class OccupancyMap:
         print(mostLikelyProb, mostLikelyPos)
         return (self.top_left.x + mostLikelyPos.x, self.top_left.y - mostLikelyPos.y)
 
+occupancyMap1 = OccupancyMap(Pos(126, 42, 0), Pos(126, 64, 0), (60,44), LEFT)
+occupancyMap2 = OccupancyMap(Pos(126, 84, 90), Pos(104, 190, 0), (44,106), BOTTOM)
+occupancyMap3 = OccupancyMap(Pos(64, 88, 180), Pos(20, 148, 0), (44,106), RIGHT)
+
 def scanAndUpdate(pos, occupancyMap):
     # Go through -90 to 90 in 10 degree steps
     turnSensor(-90, 120)
@@ -72,19 +78,32 @@ def scanAndUpdate(pos, occupancyMap):
     turnSensor(-90, 120)
 
 def navigateToMap(occupancyMap):
-    eX, eY, eTheta = estimatePosition()
     
-
     # Go to the start of the area
-    navigateToWaypoint(occupancyMap.start.x, occupancyMap.start.y)
+    if navigateToWaypoint(occupancyMap.start.x, occupancyMap.start.y):
+        return True
+    
+    eX, eY, eTheta = estimatePosition()
+    print("NAVIGATING END: I'm at {}, {} and facing {}! ".format(eX, eY, eTheta))
 
+                
     # Turn to face the area properly and move sonar to correct initial pos
-    if occupancyMap.orientation == LEFT:
-        turn(-eTheta)
-    if occupancyMap.orientation == RIGHT:
-        turn(eTheta-180)
-    if occupancyMap.orientation == BOTTOM:
-        turn(eTheta-90)
+    print("IM ON THE LEFT MAP, turning {} and eTheta is {}".format(180-eTheta, eTheta))
+    turn(occupancyMap.start.theta-eTheta)
+
+    # if occupancyMap.orientation == LEFT:
+    #     print("IM ON THE RIGHT MAP")
+    #     turn(-eTheta)
+    # if occupancyMap.orientation == RIGHT:
+    #     turn(180-eTheta)
+    # if occupancyMap.orientation == BOTTOM:
+    #     print("IM ON THE TOP MAP")
+    #     turn(90-eTheta)
+
+    eX, eY, eTheta = estimatePosition()
+    print("ENDED AT: I'm at {}, {} and facing {}! ".format(eX, eY, eTheta))
+
+    return False
 
 def hitBottle(occupancyMap):
     distanceFromBottle = float('inf')
@@ -92,6 +111,7 @@ def hitBottle(occupancyMap):
 
         # Scan and update occupancy map
         eX, eY, eTheta = estimatePosition()
+        print("HITTING BOTTLE: I'm at {}, {} and facing {}! ".format(eX, eY, eTheta))
         scanAndUpdate(Pos(x=eX, y=eY, theta=eTheta), occupancyMap)
 
         # Move closer to most likely position of bottle 
@@ -109,21 +129,36 @@ def hitBottle(occupancyMap):
 
 
 def main():
-    occupancyMap1 = OccupancyMap(start=Pos(126, 42, 0), top_left=Pos(126, 80, 0), (76,76), LEFT)
-    occupancyMap2 = OccupancyMap(start=Pos(126, 88, 0), top_left=Pos(88, 206, 0), (76,118), BOTTOM)
-    occupancyMap3 = OccupancyMap(start=Pos(80, 88, 0), top_left=Pos(4, 164, 0), (76,118), RIGHT)
     maps = [occupancyMap2, occupancyMap1, occupancyMap3]
+
     for m in maps:
-        navigateToMap(m)
+        drawMap(getWalls(m))
+
+    for m in maps:
+        if navigateToMap(m): continue # If the bot hits the bottle on the way to the waypoint then skip
         hitBottle(m)
+
+def getWalls(o):
+    X = o.map.shape[0]
+    Y = o.map.shape[1]
+
+    top = ((o.top_left.x, o.top_left.y), (o.top_left.x + X, o.top_left.y))
+    right = ((o.top_left.x + X, o.top_left.y), (o.top_left.x + X, o.top_left.y - Y))
+    bottom = ((o.top_left.x + X, o.top_left.y - Y), (o.top_left.x, o.top_left.y - Y))
+    left = ((o.top_left.x, o.top_left.y - Y), (o.top_left.x, o.top_left.y))
+    
+    return (top, left, right, bottom)
+    # top = [(o.top_left.x, o.top_left.y, 1, 0), (o.top_left.x + X, o.top_left.y, 1, 0), (o.top_left.x + X, o.top_left.y + Y, 1, 0), (o.top_left.x, o.top_left.y + Y, 1, 0)]
+
+    # return top
+
 
 if __name__ == "__main__":
     try:
+        drawMap()
         main()
     except KeyboardInterrupt:
         BP.reset_all()
     finally:
         BP.reset_all()
     
-
-
